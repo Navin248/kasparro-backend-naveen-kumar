@@ -6,9 +6,9 @@ services:
     container_name: kasparro_postgres
     restart: always
     environment:
-      POSTGRES_USER: kasparro
-      POSTGRES_PASSWORD: kasparro123
-      POSTGRES_DB: coinsdb
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
@@ -20,11 +20,11 @@ services:
     depends_on:
       - db
     environment:
-      DB_USER: kasparro
-      DB_PASSWORD: kasparro123
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_HOST: db
       DB_PORT: 5432
-      DB_NAME: coinsdb
+      DB_NAME: ${POSTGRES_DB}
     ports:
       - "8000:8000"
     command: >

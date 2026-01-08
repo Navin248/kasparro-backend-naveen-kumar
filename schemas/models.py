@@ -23,15 +23,11 @@ class NormalizedCoin(Base):
     __tablename__ = "normalized_coins"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    source = Column(String)            # coinpaprika / csv / coingecko later
-    coin_id = Column(String)
+    coin_id = Column(String, unique=True, index=True)
     name = Column(String)
     symbol = Column(String)
     market_cap = Column(String)
-
-    __table_args__ = (
-        UniqueConstraint("source", "coin_id", name="unique_coin_per_source"),
-    )
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class RawCoinGecko(Base):
     __tablename__ = "raw_coingecko"

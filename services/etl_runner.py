@@ -11,7 +11,6 @@ def normalize_data():
     total_records = 0
     
     # 1. Mark ETL as RUNNING
-    # We create a new checkpoint indicating this run started
     running_checkpoint = ETLCheckpoint(
         source="all",
         last_run_time=start_time,
@@ -24,7 +23,6 @@ def normalize_data():
         print("Normalizing data incrementally...")
 
         # 2. Get last SUCCESSFUL checkpoint
-        # We only want to resume from a point we know was good.
         last_successful_checkpoint = db.query(ETLCheckpoint)\
             .filter(ETLCheckpoint.source == "all")\
             .filter(ETLCheckpoint.status == "success")\
@@ -34,26 +32,36 @@ def normalize_data():
         last_time = last_successful_checkpoint.last_success_time if last_successful_checkpoint else None
         print(f"Resuming from: {last_time}")
 
-        # Helper function to safe insert (Idempotency)
-        def safe_add_coin(coin_data):
-            # Check if exists
-            exists = db.query(NormalizedCoin).filter_by(
-                source=coin_data["source"],
-                coin_id=coin_data["coin_id"]
+        # Helper function to upsert (Canonical Entity)
+        def upsert_coin(coin_data):
+            # Check if exists by canonical coin_id
+            existing = db.query(NormalizedCoin).filter(
+                NormalizedCoin.coin_id == coin_data["coin_id"]
             ).first()
             
-            if not exists:
-                db.add(NormalizedCoin(**coin_data))
+            if existing:
+                # Update existing record (simple merge: overwrite fields if provided)
+                if coin_data.get("name"): existing.name = coin_data["name"]
+                if coin_data.get("symbol"): existing.symbol = coin_data["symbol"]
+                if coin_data.get("market_cap"): existing.market_cap = coin_data["market_cap"]
+                return False # Not a new record
+            else:
+                # Insert new canonical record
+                new_coin = NormalizedCoin(
+                    coin_id=coin_data["coin_id"],
+                    name=coin_data["name"],
+                    symbol=coin_data["symbol"],
+                    market_cap=coin_data["market_cap"]
+                )
+                db.add(new_coin)
                 return True
-            return False
 
         # CoinPaprika
         paprika_records = db.query(RawCoinPaprika).all()
         for record in paprika_records:
             if not last_time or record.fetched_at > last_time:
                 for coin in record.data:
-                    added = safe_add_coin({
-                        "source": "coinpaprika",
+                    added = upsert_coin({
                         "coin_id": coin.get("id"),
                         "name": coin.get("name"),
                         "symbol": coin.get("symbol"),
@@ -66,9 +74,7 @@ def normalize_data():
         for record in csv_records:
             if not last_time or record.fetched_at > last_time:
                 for row in record.data:
-                    # CSV rows are dicts
-                    added = safe_add_coin({
-                        "source": "csv",
+                    added = upsert_coin({
                         "coin_id": row.get("id"),
                         "name": row.get("name"),
                         "symbol": row.get("symbol"),
@@ -81,8 +87,7 @@ def normalize_data():
         for record in gecko_records:
             if not last_time or record.fetched_at > last_time:
                 for coin in record.data:
-                    added = safe_add_coin({
-                        "source": "coingecko",
+                    added = upsert_coin({
                         "coin_id": coin.get("id"),
                         "name": coin.get("name"),
                         "symbol": coin.get("symbol"),
@@ -108,17 +113,7 @@ def normalize_data():
     except Exception as e:
         db.rollback()
         
-        # 4. Mark checkpoint as FAILED
-        # We need a new session or to handle the rollback carefully to update checking
-        # But here 'running_checkpoint' is already added.
-        # However, rollback() undid the 'add(running_checkpoint)' if it wasn't committed? 
-        # Wait, I committed running_checkpoint at the top! So it IS in DB.
-        # But subsequent adds are rolled back. 
-        # I need to update the status of that existing checkpoint record.
-        
         try:
-            # Re-fetch or merge? 
-            # Since session was rolled back, objects are expired.
             # Start a fresh transaction for the failure log
             fail_db = SessionLocal()
             

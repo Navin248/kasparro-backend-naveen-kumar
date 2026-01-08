@@ -34,18 +34,7 @@ scheduler.add_job(run_scheduled_etl, "interval", hours=1)  # change to minutes=1
 scheduler.start()
 
 
-def run_scheduled_etl():
-    print("🔥 Scheduled ETL Started")
 
-    try:
-        fetch_coinpaprika()
-        fetch_coingecko()
-        load_csv_data()
-        normalize_data()
-        print("✅ Scheduled ETL Completed")
-
-    except Exception as e:
-        print("❌ Scheduled ETL Failed:", e)
 
 
 
